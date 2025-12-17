@@ -5,6 +5,7 @@ A comprehensive, multi-tenant authentication and authorization package for Go ap
 ## Features
 
 - 🏢 **Multi-tenant architecture** - Complete tenant isolation and management
+- 📜 **Licence management** - Comprehensive software licensing system with seat tracking and expiry dates
 - 👤 **User management** - Registration, authentication, and profile management
 - 🔐 **Secure password handling** - BCrypt password hashing
 - 🛡️ **Security features**:
@@ -29,6 +30,7 @@ A comprehensive, multi-tenant authentication and authorization package for Go ap
   - [User Login](#user-login)
   - [Tenant Management](#tenant-management)
   - [User Management](#user-management)
+  - [Licence Management](#licence-management)
 - [API Reference](#api-reference)
 - [Error Handling](#error-handling)
 - [Configuration](#configuration)
@@ -157,9 +159,10 @@ if err := authServer.MigrateDBModels(); err != nil {
 }
 ```
 
-This will create two tables:
+This will create three tables:
 - `tenants` - Stores tenant/organization information
 - `users` - Stores user information with foreign key to tenants
+- `tenant_licences` - Stores licence information with one-to-one relationship to tenants
 
 ## Usage Guide
 
@@ -181,10 +184,12 @@ type AuthServerApp struct {
     DB                      *gorm.DB
     UserRepository          *repositories.UserRepository
     TenantRepository        *repositories.TenantRepository
+    TenantLicenceRepository *repositories.TenantLicenceRepository
     RegistrationService     *services.UserRegistrationService
     LoginService            *services.LoginService
     TenantService           *services.TenantService
     UserService             *services.UserService
+    TenantLicenceService    *services.TenantLicenceService
 }
 
 func InitializeAuthServer(db *gorm.DB) (*AuthServerApp, error) {
@@ -197,16 +202,19 @@ func InitializeAuthServer(db *gorm.DB) (*AuthServerApp, error) {
     // Initialize repositories
     userRepo := repositories.NewUserRepository(db)
     tenantRepo := repositories.NewTenantRepository(db)
+    tenantLicenceRepo := repositories.NewTenantLicenceRepository(db)
     
     // Initialize services
     return &AuthServerApp{
-        DB:                  db,
-        UserRepository:      userRepo,
-        TenantRepository:    tenantRepo,
-        RegistrationService: services.NewUserRegistrationService(userRepo, tenantRepo),
-        LoginService:        services.NewLoginService(userRepo, tenantRepo),
-        TenantService:       services.NewTenantService(tenantRepo),
-        UserService:         services.NewUserService(userRepo),
+        DB:                      db,
+        UserRepository:          userRepo,
+        TenantRepository:        tenantRepo,
+        TenantLicenceRepository: tenantLicenceRepo,
+        RegistrationService:     services.NewUserRegistrationService(userRepo, tenantRepo),
+        LoginService:            services.NewLoginService(userRepo, tenantRepo),
+        TenantService:           services.NewTenantService(tenantRepo),
+        UserService:             services.NewUserService(userRepo),
+        TenantLicenceService:    services.NewTenantLicenceService(tenantLicenceRepo),
     }, nil
 }
 ```
@@ -460,6 +468,138 @@ func DeactivateUser(app *AuthServerApp, tenantID, userID uint) error {
 }
 ```
 
+### Licence Management
+
+The package includes a comprehensive licence management system to control tenant access based on software licenses. Each tenant can have a licence with seat limits and expiry dates.
+
+#### Get Licence by Tenant ID
+
+```go
+func GetTenantLicence(app *AuthServerApp, tenantID uint) error {
+    licence, err := app.TenantLicenceService.GetTenantLicenceByTenantID(tenantID)
+    if err != nil {
+        return fmt.Errorf("failed to get licence: %w", err)
+    }
+    
+    fmt.Printf("Licence Key: %s\n", licence.LicenceKey)
+    fmt.Printf("Licensed Seats: %d\n", licence.LicencedSeats)
+    fmt.Printf("Used Seats: %d\n", licence.UsedSeats)
+    fmt.Printf("Available Seats: %d\n", licence.LicencedSeats - licence.UsedSeats)
+    
+    if licence.ExpiryDate != nil {
+        fmt.Printf("Expiry Date: %s\n", licence.ExpiryDate.Format("2006-01-02"))
+    } else {
+        fmt.Println("Expiry Date: No expiry")
+    }
+    
+    return nil
+}
+```
+
+#### Get Licence by Licence Key
+
+```go
+func ValidateLicenceKey(app *AuthServerApp, licenceKey string) error {
+    licence, err := app.TenantLicenceService.GetTenantLicenceByLicenceKey(licenceKey)
+    if err != nil {
+        return fmt.Errorf("invalid licence key: %w", err)
+    }
+    
+    fmt.Printf("Licence ID: %d\n", licence.ID)
+    fmt.Println("Licence key is valid!")
+    
+    return nil
+}
+```
+
+#### Get All Licences
+
+```go
+func ListAllLicences(app *AuthServerApp) error {
+    licences, err := app.TenantLicenceService.GetAllTenantLicences()
+    if err != nil {
+        return fmt.Errorf("failed to get licences: %w", err)
+    }
+    
+    fmt.Printf("Total Licences: %d\n", len(licences))
+    for _, licence := range licences {
+        status := "Active"
+        if licence.ExpiryDate != nil && licence.ExpiryDate.Before(time.Now()) {
+            status = "Expired"
+        }
+        
+        fmt.Printf("- Tenant ID: %d, Key: %s, Seats: %d/%d, Status: %s\n",
+            licence.TenantID,
+            licence.LicenceKey,
+            licence.UsedSeats,
+            licence.LicencedSeats,
+            status,
+        )
+    }
+    
+    return nil
+}
+```
+
+#### Update Licence
+
+```go
+func UpdateLicence(app *AuthServerApp, tenantID uint) error {
+    expiryDate := time.Now().AddDate(1, 0, 0) // 1 year from now
+    
+    updateDTO := &dto.TenantLicenceUpdateRequestDTO{
+        LicenceKey:    "NEW-LICENCE-KEY-2024",
+        LicencedSeats: 50, // Increase from 10 to 50 seats
+        ExpiryDate:    &expiryDate,
+    }
+    
+    err := app.TenantLicenceService.UpdateTenantLicence(tenantID, updateDTO)
+    if err != nil {
+        return fmt.Errorf("failed to update licence: %w", err)
+    }
+    
+    fmt.Println("Licence updated successfully!")
+    return nil
+}
+```
+
+#### Check Licence Validity
+
+```go
+func CheckLicenceValidity(app *AuthServerApp, tenantID uint) (bool, error) {
+    licence, err := app.TenantLicenceService.GetTenantLicenceByTenantID(tenantID)
+    if err != nil {
+        return false, err
+    }
+    
+    // Check if expired
+    if licence.ExpiryDate != nil && licence.ExpiryDate.Before(time.Now()) {
+        return false, config.ErrTenantLicenceExpired
+    }
+    
+    // Check if seats exceeded
+    if licence.UsedSeats >= licence.LicencedSeats {
+        return false, config.ErrTenantLicenceExceeded
+    }
+    
+    fmt.Printf("Licence is valid. %d/%d seats used.\n", 
+        licence.UsedSeats, licence.LicencedSeats)
+    return true, nil
+}
+```
+
+**Key Features:**
+- **Seat Management**: Track licensed vs. used seats to control user limits per tenant
+- **Expiry Tracking**: Set expiration dates for time-limited licenses
+- **Licence Keys**: Unique identifiers for each tenant's license
+- **Validation**: Built-in checks for expired licenses and seat limits
+
+**Use Cases:**
+- SaaS pricing tiers (e.g., 10 users for Basic, 50 for Pro, unlimited for Enterprise)
+- Time-limited trials with automatic expiry
+- License key validation for on-premise deployments
+- Seat-based billing and access control
+
 ## API Reference
 
 ### Services
@@ -527,6 +667,29 @@ func (s *UserService) UpdateUser(tenantId, userId uint, userDTO dto.UserUpdateRe
 
 // Soft delete user
 func (s *UserService) DeleteUser(tenantId, userId uint) error
+```
+
+#### TenantLicenceService
+
+```go
+type TenantLicenceService struct {
+    // ...
+}
+
+// Get tenant licence by tenant ID
+func (s *TenantLicenceService) GetTenantLicenceByID(tenantID uint) (*dto.TenantLicenceResponseDTO, error)
+
+// Get all tenant licences
+func (s *TenantLicenceService) GetAllTenantLicences() ([]entities.TenantLicence, error)
+
+// Get tenant licence by licence key
+func (s *TenantLicenceService) GetTenantLicenceByLicenceKey(licenceKey string) (*dto.TenantLicenceResponseDTO, error)
+
+// Get tenant licence by tenant ID
+func (s *TenantLicenceService) GetTenantLicenceByTenantID(tenantID uint) (*dto.TenantLicenceResponseDTO, error)
+
+// Update tenant licence
+func (s *TenantLicenceService) UpdateTenantLicence(tenantID uint, tenantLicence *dto.TenantLicenceUpdateRequestDTO) error
 ```
 
 ### Data Transfer Objects (DTOs)
@@ -602,6 +765,27 @@ type UserResponseDTO struct {
 }
 ```
 
+#### TenantLicenceResponseDTO
+```go
+type TenantLicenceResponseDTO struct {
+    ID            uint       `json:"id"`
+    TenantID      uint       `json:"tenant_id"`
+    LicenceKey    string     `json:"licence_key"`
+    LicencedSeats int        `json:"licenced_seats"`
+    UsedSeats     int        `json:"used_seats"`
+    ExpiryDate    *time.Time `json:"expiry_date"`
+}
+```
+
+#### TenantLicenceUpdateRequestDTO
+```go
+type TenantLicenceUpdateRequestDTO struct {
+    LicenceKey    string     `json:"licence_key"`
+    LicencedSeats int        `json:"licenced_seats"`
+    ExpiryDate    *time.Time `json:"expiry_date"`
+}
+```
+
 ## Error Handling
 
 The package provides predefined error constants for common scenarios:
@@ -611,14 +795,18 @@ import "github.com/geekible-ltd/auth-server/src/internal/config"
 
 // Available error constants
 var (
-    ErrFailedToCreateTenant = errors.New("failed to create tenant")
-    ErrFailedToCreateUser   = errors.New("failed to create user")
-    ErrFailedToHashPassword = errors.New("failed to hash password")
-    ErrTenantAlreadyExists  = errors.New("tenant already exists")
-    ErrUserAlreadyExists    = errors.New("user already exists")
-    ErrUserNotFound         = errors.New("user not found")
-    ErrInvalidPassword      = errors.New("invalid password")
-    ErrTenantNotFound       = errors.New("tenant not found")
+    ErrFailedToCreateTenant        = errors.New("failed to create tenant")
+    ErrFailedToCreateUser          = errors.New("failed to create user")
+    ErrFailedToHashPassword        = errors.New("failed to hash password")
+    ErrTenantAlreadyExists         = errors.New("tenant already exists")
+    ErrUserAlreadyExists           = errors.New("user already exists")
+    ErrUserNotFound                = errors.New("user not found")
+    ErrInvalidPassword             = errors.New("invalid password")
+    ErrTenantNotFound              = errors.New("tenant not found")
+    ErrTenantLicenceNotFound       = errors.New("tenant licence not found")
+    ErrTenantLicenceExceeded       = errors.New("tenant licence exceeded")
+    ErrTenantLicenceExpired        = errors.New("tenant licence expired")
+    ErrFailedToCreateTenantLicence = errors.New("failed to create tenant licence")
 )
 ```
 
@@ -647,6 +835,34 @@ func HandleLogin(app *AuthServerApp, email, password string) {
     }
     
     fmt.Printf("Welcome, %s!\n", response.Email)
+}
+
+func HandleLicenceValidation(app *AuthServerApp, tenantID uint) {
+    licence, err := app.TenantLicenceService.GetTenantLicenceByTenantID(tenantID)
+    if err != nil {
+        switch {
+        case errors.Is(err, config.ErrTenantLicenceNotFound):
+            fmt.Println("No licence found for this tenant.")
+        default:
+            fmt.Printf("Licence error: %v\n", err)
+        }
+        return
+    }
+    
+    // Check expiry
+    if licence.ExpiryDate != nil && licence.ExpiryDate.Before(time.Now()) {
+        fmt.Println("Licence has expired. Please renew your subscription.")
+        return
+    }
+    
+    // Check seat availability
+    if licence.UsedSeats >= licence.LicencedSeats {
+        fmt.Printf("All %d seats are in use. Please upgrade your plan.\n", licence.LicencedSeats)
+        return
+    }
+    
+    fmt.Printf("Licence valid. %d of %d seats available.\n", 
+        licence.LicencedSeats - licence.UsedSeats, licence.LicencedSeats)
 }
 ```
 
@@ -700,11 +916,12 @@ import (
 )
 
 type App struct {
-    DB                  *gorm.DB
-    RegistrationService *services.UserRegistrationService
-    LoginService        *services.LoginService
-    TenantService       *services.TenantService
-    UserService         *services.UserService
+    DB                   *gorm.DB
+    RegistrationService  *services.UserRegistrationService
+    LoginService         *services.LoginService
+    TenantService        *services.TenantService
+    UserService          *services.UserService
+    TenantLicenceService *services.TenantLicenceService
 }
 
 func main() {
@@ -724,13 +941,15 @@ func main() {
     // Initialize repositories and services
     userRepo := repositories.NewUserRepository(db)
     tenantRepo := repositories.NewTenantRepository(db)
+    tenantLicenceRepo := repositories.NewTenantLicenceRepository(db)
     
     app := &App{
-        DB:                  db,
-        RegistrationService: services.NewUserRegistrationService(userRepo, tenantRepo),
-        LoginService:        services.NewLoginService(userRepo, tenantRepo),
-        TenantService:       services.NewTenantService(tenantRepo),
-        UserService:         services.NewUserService(userRepo),
+        DB:                   db,
+        RegistrationService:  services.NewUserRegistrationService(userRepo, tenantRepo),
+        LoginService:         services.NewLoginService(userRepo, tenantRepo),
+        TenantService:        services.NewTenantService(tenantRepo),
+        UserService:          services.NewUserService(userRepo),
+        TenantLicenceService: services.NewTenantLicenceService(tenantLicenceRepo),
     }
     
     // Setup routes
@@ -753,6 +972,9 @@ func main() {
         protected.GET("/tenants/:tenantId/users", app.ListUsersHandler)
         protected.PUT("/tenants/:tenantId/users/:userId", app.UpdateUserHandler)
         protected.DELETE("/tenants/:tenantId/users/:userId", app.DeleteUserHandler)
+        protected.GET("/tenants/:tenantId/licence", app.GetTenantLicenceHandler)
+        protected.PUT("/tenants/:tenantId/licence", app.UpdateTenantLicenceHandler)
+        protected.GET("/licences", app.ListAllLicencesHandler)
     }
     
     log.Println("Server starting on :8080")
@@ -944,6 +1166,50 @@ func (app *App) DeleteUserHandler(c *gin.Context) {
     
     c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 }
+
+// Handler: Get Tenant Licence
+func (app *App) GetTenantLicenceHandler(c *gin.Context) {
+    var tenantID uint
+    fmt.Sscanf(c.Param("tenantId"), "%d", &tenantID)
+    
+    licence, err := app.TenantLicenceService.GetTenantLicenceByTenantID(tenantID)
+    if err != nil {
+        c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+        return
+    }
+    
+    c.JSON(http.StatusOK, licence)
+}
+
+// Handler: Update Tenant Licence
+func (app *App) UpdateTenantLicenceHandler(c *gin.Context) {
+    var tenantID uint
+    fmt.Sscanf(c.Param("tenantId"), "%d", &tenantID)
+    
+    var licenceDTO dto.TenantLicenceUpdateRequestDTO
+    if err := c.ShouldBindJSON(&licenceDTO); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    
+    if err := app.TenantLicenceService.UpdateTenantLicence(tenantID, &licenceDTO); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    
+    c.JSON(http.StatusOK, gin.H{"message": "Licence updated successfully"})
+}
+
+// Handler: List All Licences
+func (app *App) ListAllLicencesHandler(c *gin.Context) {
+    licences, err := app.TenantLicenceService.GetAllTenantLicences()
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    
+    c.JSON(http.StatusOK, licences)
+}
 ```
 
 ## Security Best Practices
@@ -1019,6 +1285,19 @@ func (app *App) DeleteUserHandler(c *gin.Context) {
 - `created_at` - Record creation timestamp
 - `updated_at` - Record update timestamp
 - `deleted_at` - Soft delete timestamp
+
+### Tenant Licences Table
+- `id` - Primary key
+- `tenant_id` - Foreign key to tenants (one-to-one relationship)
+- `licence_key` - Unique licence key identifier
+- `licenced_seats` - Maximum number of user seats allowed
+- `used_seats` - Current number of seats in use
+- `expiry_date` - Licence expiration date (nullable)
+- `created_at` - Record creation timestamp
+- `updated_at` - Record update timestamp
+- `deleted_at` - Soft delete timestamp
+
+**Relationship**: Each tenant can have one licence. The licence controls access limits and expiry for the tenant's subscription.
 
 ## Contributing
 
