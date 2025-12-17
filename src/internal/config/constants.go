@@ -19,3 +19,5 @@ var (
 	ErrInvalidPassword      = errors.New("invalid password")
 	ErrTenantNotFound       = errors.New("tenant not found")
 )
+
+const MaxFailedLoginAttempts = 3

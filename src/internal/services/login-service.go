@@ -28,6 +28,13 @@ func (s *LoginService) Login(loginRequest dto.LoginDTO, ipAddress string) (dto.L
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(loginRequest.Password)); err != nil {
+		user.FailedLoginAttempts++
+		if user.FailedLoginAttempts >= config.MaxFailedLoginAttempts {
+			user.IsActive = false
+		}
+		if err := s.userRepository.Update(user); err != nil {
+			return dto.LoginResponseDTO{}, err
+		}
 		return dto.LoginResponseDTO{}, config.ErrInvalidPassword
 	}
 
@@ -41,6 +48,8 @@ func (s *LoginService) Login(loginRequest dto.LoginDTO, ipAddress string) (dto.L
 	now := time.Now()
 	user.LastLoginAt = &now
 	user.LastLoginIP = ipAddress
+	user.FailedLoginAttempts = 0
+
 	if err := s.userRepository.Update(user); err != nil {
 		return dto.LoginResponseDTO{}, err
 	}
