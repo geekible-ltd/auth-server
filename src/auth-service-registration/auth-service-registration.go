@@ -14,7 +14,7 @@ func NewAuthServerRegistration(db *gorm.DB) *AuthServerRegistration {
 }
 
 func (r *AuthServerRegistration) MigrateDBModels() error {
-	err := r.db.AutoMigrate(&entities.User{}, &entities.Tenant{})
+	err := r.db.AutoMigrate(&entities.User{}, &entities.Tenant{}, &entities.TenantLicence{})
 	if err != nil {
 		return err
 	}

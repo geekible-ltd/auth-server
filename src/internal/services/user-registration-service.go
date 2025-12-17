@@ -8,19 +8,22 @@ import (
 	"github.com/geekible-ltd/auth-server/src/internal/dto"
 	"github.com/geekible-ltd/auth-server/src/internal/entities"
 	"github.com/geekible-ltd/auth-server/src/internal/repositories"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
 type UserRegistrationService struct {
-	userRepository   *repositories.UserRepository
-	tenantRepository *repositories.TenantRepository
+	userRepository          *repositories.UserRepository
+	tenantRepository        *repositories.TenantRepository
+	tenantLicenceRepository *repositories.TenantLicenceRepository
 }
 
-func NewUserRegistrationService(userRepository *repositories.UserRepository, tenantRepository *repositories.TenantRepository) *UserRegistrationService {
+func NewUserRegistrationService(userRepository *repositories.UserRepository, tenantRepository *repositories.TenantRepository, tenantLicenceRepository *repositories.TenantLicenceRepository) *UserRegistrationService {
 	return &UserRegistrationService{
-		userRepository:   userRepository,
-		tenantRepository: tenantRepository,
+		userRepository:          userRepository,
+		tenantRepository:        tenantRepository,
+		tenantLicenceRepository: tenantLicenceRepository,
 	}
 }
 
@@ -45,6 +48,19 @@ func (s *UserRegistrationService) RegisterTenant(tenantDTO *dto.TenantRegistrati
 
 	if err := s.tenantRepository.Create(tenant); err != nil {
 		return config.ErrFailedToCreateTenant
+	}
+
+	tenantLicence := &entities.TenantLicence{
+		TenantID:      tenant.ID,
+		LicenceKey:    uuid.New().String(),
+		LicencedSeats: 5,
+		UsedSeats:     1,
+		ExpiryDate:    nil,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+	if err := s.tenantLicenceRepository.Create(tenantLicence); err != nil {
+		return config.ErrFailedToCreateTenantLicence
 	}
 
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(tenantDTO.User.Password), bcrypt.DefaultCost)
@@ -88,6 +104,26 @@ func (s *UserRegistrationService) RegisterUser(tenantId uint, userDTO *dto.UserR
 		return err
 	}
 
+	tenantLicence, err := s.tenantLicenceRepository.GetByID(tenantId)
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return config.ErrTenantLicenceNotFound
+	} else if err != nil {
+		return err
+	}
+
+	if tenantLicence.UsedSeats >= tenantLicence.LicencedSeats {
+		return config.ErrTenantLicenceExceeded
+	}
+
+	if tenantLicence.ExpiryDate != nil && tenantLicence.ExpiryDate.Before(time.Now()) {
+		return config.ErrTenantLicenceExpired
+	}
+
+	tenantLicence.UsedSeats++
+	if err := s.tenantLicenceRepository.Update(tenantLicence); err != nil {
+		return err
+	}
+
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(userDTO.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return config.ErrFailedToHashPassword
@@ -117,4 +153,32 @@ func (s *UserRegistrationService) RegisterUser(tenantId uint, userDTO *dto.UserR
 	}
 
 	return nil
+}
+
+func (s *UserRegistrationService) DeleteUser(tenantId uint, userId uint) error {
+	user, err := s.userRepository.GetByID(tenantId, userId)
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return config.ErrUserNotFound
+	} else if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	user.IsActive = false
+	user.UpdatedAt = time.Now()
+	user.DeletedAt = &now
+
+	tenantLicence, err := s.tenantLicenceRepository.GetByTenantID(tenantId)
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return config.ErrTenantLicenceNotFound
+	} else if err != nil {
+		return err
+	}
+
+	tenantLicence.UsedSeats--
+	if err := s.tenantLicenceRepository.Update(tenantLicence); err != nil {
+		return err
+	}
+
+	return s.userRepository.Update(user)
 }
