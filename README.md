@@ -7,8 +7,9 @@ A comprehensive, multi-tenant authentication and authorization package for Go ap
 - 🏢 **Multi-tenant architecture** - Complete tenant isolation and management
 - 📜 **Licence management** - Comprehensive software licensing system with seat tracking and expiry dates
 - 👤 **User management** - Registration, authentication, and profile management
-- 🔐 **Secure password handling** - BCrypt password hashing
+- 🔐 **Secure password handling** - BCrypt password hashing with JWT token authentication
 - 🛡️ **Security features**:
+  - JWT token-based authentication
   - Failed login attempt tracking
   - Account lockout after multiple failed attempts
   - Last login tracking with IP address
@@ -18,6 +19,7 @@ A comprehensive, multi-tenant authentication and authorization package for Go ap
 - 🗄️ **GORM integration** - Works with any GORM-supported database (PostgreSQL, MySQL, SQLite, etc.)
 - 📦 **Clean architecture** - Repository pattern, service layer, and DTOs for maintainability
 - 🔒 **Encapsulated design** - Internal implementation hidden, only services exposed through AuthServer
+- 🚀 **Built-in HTTP handlers** - Ready-to-use Gin handlers with automatic route registration
 
 ## Table of Contents
 
@@ -50,6 +52,9 @@ This package requires:
 - Go 1.24.5 or higher
 - GORM v1.31.1
 - golang.org/x/crypto (for BCrypt)
+- Gin Web Framework
+- github.com/geekible-ltd/gin-middleware (for JWT authentication)
+- github.com/geekible-ltd/response-utils (for standardized responses)
 
 ## Quick Start
 
@@ -59,11 +64,10 @@ Here's a minimal example to get you started:
 package main
 
 import (
-    "fmt"
     "log"
     
     "github.com/geekible-ltd/auth-server"
-    "github.com/geekible-ltd/auth-server/dto"
+    "github.com/gin-gonic/gin"
     "gorm.io/driver/postgres"
     "gorm.io/gorm"
 )
@@ -76,41 +80,20 @@ func main() {
         log.Fatal("Failed to connect to database:", err)
     }
     
-    // 2. Initialize auth server (automatically creates all services)
-    authServer := authserver.NewAuthServer(db)
+    // 2. Initialize auth server with JWT secret
+    jwtSecret := "your-secret-key-here"
+    authServer := authserver.NewAuthServer(db, jwtSecret)
     if err := authServer.MigrateDB(); err != nil {
         log.Fatal("Failed to migrate database:", err)
     }
     
-    // 3. Register a new tenant with admin user
-    tenantDTO := &dto.TenantRegistrationDTO{
-        Name:    "Acme Corporation",
-        Email:   "contact@acme.com",
-        Phone:   "+1234567890",
-        Address: "123 Main St, City, Country",
-    }
-    tenantDTO.User.FirstName = "John"
-    tenantDTO.User.LastName = "Doe"
-    tenantDTO.User.Email = "john.doe@acme.com"
-    tenantDTO.User.Password = "SecurePassword123!"
+    // 3. Setup Gin engine and register routes
+    router := gin.Default()
+    authServer.RegisterRoutes(router)
     
-    if err := authServer.RegistrationService.RegisterTenant(tenantDTO); err != nil {
-        log.Fatal("Failed to register tenant:", err)
-    }
-    
-    // 4. Login
-    loginDTO := dto.LoginDTO{
-        Email:    "john.doe@acme.com",
-        Password: "SecurePassword123!",
-    }
-    
-    loginResponse, err := authServer.LoginService.Login(loginDTO, "192.168.1.1")
-    if err != nil {
-        log.Fatal("Login failed:", err)
-    }
-    
-    fmt.Printf("Login successful! User ID: %d, Role: %s\n", 
-        loginResponse.UserID, loginResponse.Role)
+    // 4. Start server
+    log.Println("Server starting on :8080")
+    router.Run(":8080")
 }
 ```
 
@@ -146,7 +129,8 @@ db, err := gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
 ### Step 2: Run Database Migration
 
 ```go
-authServer := authserver.NewAuthServer(db)
+jwtSecret := "your-secret-key-here"
+authServer := authserver.NewAuthServer(db, jwtSecret)
 if err := authServer.MigrateDB(); err != nil {
     log.Fatal("Migration failed:", err)
 }
@@ -159,6 +143,21 @@ This will create three tables:
 
 ## Usage Guide
 
+### Built-in HTTP Routes
+
+The package includes ready-to-use HTTP handlers with JWT authentication. Simply call `RegisterRoutes()` to add all auth endpoints to your Gin router.
+
+**Available Routes:**
+
+**Public Routes:**
+- `POST /register/new-tenant` - Register a new tenant with admin user
+- `POST /auth/login` - User login (returns JWT token)
+
+**Protected Routes (Requires JWT Token):**
+- `POST /register/user-management/new-user` - Register a new user under existing tenant
+
+All routes use standardized response format and include proper error handling.
+
 ### Initialize Auth Server
 
 First, initialize the database and create repository and service instances:
@@ -168,12 +167,13 @@ package main
 
 import (
     "github.com/geekible-ltd/auth-server"
+    "github.com/gin-gonic/gin"
     "gorm.io/gorm"
 )
 
-func InitializeAuthServer(db *gorm.DB) (*authserver.AuthServer, error) {
+func InitializeAuthServer(db *gorm.DB, jwtSecret string) (*authserver.AuthServer, error) {
     // Initialize auth server with all services
-    authServer := authserver.NewAuthServer(db)
+    authServer := authserver.NewAuthServer(db, jwtSecret)
     
     // Run database migration
     if err := authServer.MigrateDB(); err != nil {
@@ -183,16 +183,111 @@ func InitializeAuthServer(db *gorm.DB) (*authserver.AuthServer, error) {
     // Return the auth server with all services ready to use
     return authServer, nil
 }
+
+func SetupRouter(authServer *authserver.AuthServer) *gin.Engine {
+    router := gin.Default()
+    
+    // Register all auth routes automatically
+    authServer.RegisterRoutes(router)
+    
+    // Add your custom routes here
+    router.GET("/health", func(c *gin.Context) {
+        c.JSON(200, gin.H{"status": "ok"})
+    })
+    
+    return router
+}
 ```
 
-### Tenant Registration
+### Using Built-in HTTP Handlers
 
-Register a new tenant (organization) with an admin user:
+The simplest way to use the auth server is with the built-in HTTP handlers:
 
 ```go
-import "github.com/geekible-ltd/auth-server/src/internal/dto"
+package main
 
-func RegisterNewTenant(app *AuthServerApp) error {
+import (
+    "log"
+    
+    "github.com/geekible-ltd/auth-server"
+    "github.com/gin-gonic/gin"
+    "gorm.io/driver/postgres"
+    "gorm.io/gorm"
+)
+
+func main() {
+    // Connect to database
+    dsn := "host=localhost user=postgres password=postgres dbname=authdb port=5432"
+    db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // Initialize auth server
+    jwtSecret := "your-secret-key"
+    authServer := authserver.NewAuthServer(db, jwtSecret)
+    authServer.MigrateDB()
+    
+    // Setup router and register routes
+    router := gin.Default()
+    authServer.RegisterRoutes(router)
+    
+    // Start server
+    router.Run(":8080")
+}
+```
+
+**API Usage Examples:**
+
+**Register a Tenant:**
+```bash
+curl -X POST http://localhost:8080/register/new-tenant \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Tech Startup Inc",
+    "email": "contact@techstartup.com",
+    "phone": "+1-555-0100",
+    "address": "456 Innovation Drive",
+    "user": {
+      "first_name": "Alice",
+      "last_name": "Smith",
+      "email": "alice.smith@techstartup.com",
+      "password": "StrongPassword123!"
+    }
+  }'
+```
+
+**Login:**
+```bash
+curl -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "alice.smith@techstartup.com",
+    "password": "StrongPassword123!"
+  }'
+```
+
+**Register Additional User (with JWT token):**
+```bash
+curl -X POST http://localhost:8080/register/user-management/new-user \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "first_name": "Bob",
+    "last_name": "Johnson",
+    "email": "bob.johnson@techstartup.com",
+    "password": "SecurePass456!"
+  }'
+```
+
+### Using Services Directly
+
+You can also use the services directly for custom implementations:
+
+```go
+import "github.com/geekible-ltd/auth-server/dto"
+
+func RegisterNewTenant(authServer *authserver.AuthServer) error {
     tenantDTO := &dto.TenantRegistrationDTO{
         Name:    "Tech Startup Inc",
         Email:   "contact@techstartup.com",
@@ -206,7 +301,7 @@ func RegisterNewTenant(app *AuthServerApp) error {
     tenantDTO.User.Email = "alice.smith@techstartup.com"
     tenantDTO.User.Password = "StrongPassword123!"
     
-    err := app.RegistrationService.RegisterTenant(tenantDTO)
+    err := authServer.RegistrationService.RegisterTenant(tenantDTO)
     if err != nil {
         return fmt.Errorf("tenant registration failed: %w", err)
     }
@@ -218,9 +313,10 @@ func RegisterNewTenant(app *AuthServerApp) error {
 
 **Key Points:**
 - The admin user is automatically assigned the `tenant_admin` role
-- The email domain from the tenant email is used for tenant identification
+- A default licence with 5 seats is created automatically
 - Passwords are automatically hashed using BCrypt before storage
 - Both tenant and user are created in a single transaction
+- JWT tokens are returned on successful login for authenticated requests
 
 ### User Registration
 

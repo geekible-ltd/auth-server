@@ -1,15 +1,18 @@
 package authserver
 
 import (
+	authhandlers "github.com/geekible-ltd/auth-server/auth-handlers"
 	"github.com/geekible-ltd/auth-server/internal/models"
 	"github.com/geekible-ltd/auth-server/internal/repository"
 	"github.com/geekible-ltd/auth-server/internal/service"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 // AuthServer provides database migration and initialization for the auth server
 type AuthServer struct {
 	db                   *gorm.DB
+	jwtSecret            string
 	LoginService         *service.LoginService
 	RegistrationService  *service.UserRegistrationService
 	TenantService        *service.TenantService
@@ -18,7 +21,7 @@ type AuthServer struct {
 }
 
 // New creates a new AuthServer instance
-func NewAuthServer(db *gorm.DB) *AuthServer {
+func NewAuthServer(db *gorm.DB, jwtSecret string) *AuthServer {
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(db)
 	tenantRepo := repository.NewTenantRepository(db)
@@ -27,6 +30,7 @@ func NewAuthServer(db *gorm.DB) *AuthServer {
 	// Initialize services with repositories
 	return &AuthServer{
 		db:                   db,
+		jwtSecret:            jwtSecret,
 		LoginService:         service.NewLoginService(userRepo, tenantRepo),
 		RegistrationService:  service.NewUserRegistrationService(userRepo, tenantRepo, tenantLicenceRepo),
 		TenantService:        service.NewTenantService(tenantRepo),
@@ -42,4 +46,9 @@ func (a *AuthServer) MigrateDB() error {
 		&models.Tenant{},
 		&models.TenantLicence{},
 	)
+}
+
+func (a *AuthServer) RegisterRoutes(ginEngine *gin.Engine) {
+	authHandlers := authhandlers.NewAuthHandlers(a.jwtSecret, ginEngine, a.LoginService, a.RegistrationService, a.TenantService, a.UserService, a.TenantLicenceService)
+	authHandlers.RegisterRoutes()
 }

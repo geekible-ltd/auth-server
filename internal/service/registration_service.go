@@ -27,7 +27,7 @@ func NewUserRegistrationService(userRepository *repository.UserRepository, tenan
 	}
 }
 
-func (s *UserRegistrationService) RegisterTenant(tenantDTO *dto.TenantRegistrationDTO) error {
+func (s *UserRegistrationService) RegisterTenant(tenantDTO dto.TenantRegistrationDTO) error {
 	emailDomain := strings.Split(tenantDTO.Email, "@")[1]
 	_, err := s.tenantRepository.GetByEmailDomain(emailDomain)
 
@@ -94,7 +94,7 @@ func (s *UserRegistrationService) RegisterTenant(tenantDTO *dto.TenantRegistrati
 	return nil
 }
 
-func (s *UserRegistrationService) RegisterUser(tenantId uint, userDTO *dto.UserRegistrationDTO) error {
+func (s *UserRegistrationService) RegisterUser(tenantId uint, userDTO dto.UserRegistrationDTO) error {
 	emailDomain := strings.Split(userDTO.Email, "@")[1]
 	_, err := s.userRepository.GetByEmailDomain(emailDomain)
 
