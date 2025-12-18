@@ -48,8 +48,7 @@ func (a *AuthServer) MigrateDB() error {
 	)
 }
 
-func (a *AuthServer) RegisterRoutes() *gin.Engine {
-	authHandlers := authhandlers.NewAuthHandlers(a.jwtSecret, a.LoginService, a.RegistrationService, a.TenantService, a.UserService, a.TenantLicenceService)
-	router := authHandlers.RegisterRoutes()
-	return router
+func (a *AuthServer) RegisterRoutes(ginEngine *gin.Engine) {
+	authHandlers := authhandlers.NewAuthHandlers(a.jwtSecret, ginEngine, a.LoginService, a.RegistrationService, a.TenantService, a.UserService, a.TenantLicenceService)
+	authHandlers.RegisterRoutes()
 }

@@ -1,11 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/geekible-ltd/auth-server"
-	"github.com/geekible-ltd/auth-server/dto"
+	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -17,41 +16,28 @@ func main() {
 		log.Fatal("Failed to connect to database:", err)
 	}
 
-	// Initialize auth server with all services
-	authServer := authserver.NewAuthServer(db)
+	// Initialize auth server with JWT secret
+	jwtSecret := "your-secret-key-change-in-production"
+	authServer := authserver.NewAuthServer(db, jwtSecret)
 	if err := authServer.MigrateDB(); err != nil {
 		log.Fatal("Migration failed:", err)
 	}
 
-	// Register a tenant - use services from authServer
-	tenantDTO := &dto.TenantRegistrationDTO{
-		Name:    "Example Corp",
-		Email:   "contact@example.com",
-		Phone:   "+1234567890",
-		Address: "123 Main St",
-	}
-	tenantDTO.User.FirstName = "Admin"
-	tenantDTO.User.LastName = "User"
-	tenantDTO.User.Email = "admin@example.com"
-	tenantDTO.User.Password = "SecurePass123!"
+	// Create Gin router
+	router := gin.Default()
 
-	if err := authServer.RegistrationService.RegisterTenant(tenantDTO); err != nil {
-		log.Fatal("Failed to register tenant:", err)
-	}
+	// Register auth routes
+	authServer.RegisterRoutes(router)
 
-	fmt.Println("✓ Tenant registered successfully")
+	// Add health check endpoint
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
 
-	// Login
-	loginDTO := dto.LoginDTO{
-		Email:    "admin@example.com",
-		Password: "SecurePass123!",
-	}
-
-	response, err := authServer.LoginService.Login(loginDTO, "127.0.0.1")
-	if err != nil {
-		log.Fatal("Login failed:", err)
-	}
-
-	fmt.Printf("✓ Login successful! User ID: %d, Role: %s\n", response.UserID, response.Role)
+	// Start server
+	log.Println("Server starting on :8080")
+	log.Println("Try: POST http://localhost:8080/register/new-tenant")
+	log.Println("Try: POST http://localhost:8080/auth/login")
+	router.Run(":8080")
 }
 

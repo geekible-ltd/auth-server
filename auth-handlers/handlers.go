@@ -23,20 +23,19 @@ type AuthHandlers struct {
 
 func NewAuthHandlers(
 	jwtSecret string,
+	ginEngine *gin.Engine,
 	loginService *service.LoginService,
 	registrationService *service.UserRegistrationService,
 	tenantService *service.TenantService,
 	userService *service.UserService,
 	tenantLicenceService *service.TenantLicenceService) *AuthHandlers {
-	router := gin.Default()
 
-	router.Use(gin.Logger())
-	router.Use(gin.Recovery())
-	router.Use(ginmiddleware.RateLimitMiddleware(10, 20))
+	// Apply middleware to the provided engine
+	ginEngine.Use(ginmiddleware.RateLimitMiddleware(10, 20))
 
 	return &AuthHandlers{
 		jwtSecret:            jwtSecret,
-		ginEngine:            router,
+		ginEngine:            ginEngine,
 		LoginService:         loginService,
 		RegistrationService:  registrationService,
 		TenantService:        tenantService,
@@ -45,10 +44,9 @@ func NewAuthHandlers(
 	}
 }
 
-func (h *AuthHandlers) RegisterRoutes() *gin.Engine {
+func (h *AuthHandlers) RegisterRoutes() {
 	h.registerRegisterRoutes()
 	h.registerLoginRoutes()
-	return h.ginEngine
 }
 
 func (h *AuthHandlers) registerRegisterRoutes() {
