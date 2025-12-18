@@ -1,19 +1,19 @@
-package services
+package service
 
 import (
 	"time"
 
-	"github.com/geekible-ltd/auth-server/src/internal/config"
-	"github.com/geekible-ltd/auth-server/src/internal/dto"
-	"github.com/geekible-ltd/auth-server/src/internal/repositories"
+	"github.com/geekible-ltd/auth-server/dto"
+	"github.com/geekible-ltd/auth-server/internal/config"
+	"github.com/geekible-ltd/auth-server/internal/repository"
 	"gorm.io/gorm"
 )
 
 type TenantService struct {
-	tenantRepository *repositories.TenantRepository
+	tenantRepository *repository.TenantRepository
 }
 
-func NewTenantService(tenantRepository *repositories.TenantRepository) *TenantService {
+func NewTenantService(tenantRepository *repository.TenantRepository) *TenantService {
 	return &TenantService{tenantRepository: tenantRepository}
 }
 

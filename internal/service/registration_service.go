@@ -1,25 +1,25 @@
-package services
+package service
 
 import (
 	"strings"
 	"time"
 
-	"github.com/geekible-ltd/auth-server/src/internal/config"
-	"github.com/geekible-ltd/auth-server/src/internal/dto"
-	"github.com/geekible-ltd/auth-server/src/internal/entities"
-	"github.com/geekible-ltd/auth-server/src/internal/repositories"
+	"github.com/geekible-ltd/auth-server/dto"
+	"github.com/geekible-ltd/auth-server/internal/config"
+	"github.com/geekible-ltd/auth-server/internal/models"
+	"github.com/geekible-ltd/auth-server/internal/repository"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
 type UserRegistrationService struct {
-	userRepository          *repositories.UserRepository
-	tenantRepository        *repositories.TenantRepository
-	tenantLicenceRepository *repositories.TenantLicenceRepository
+	userRepository          *repository.UserRepository
+	tenantRepository        *repository.TenantRepository
+	tenantLicenceRepository *repository.TenantLicenceRepository
 }
 
-func NewUserRegistrationService(userRepository *repositories.UserRepository, tenantRepository *repositories.TenantRepository, tenantLicenceRepository *repositories.TenantLicenceRepository) *UserRegistrationService {
+func NewUserRegistrationService(userRepository *repository.UserRepository, tenantRepository *repository.TenantRepository, tenantLicenceRepository *repository.TenantLicenceRepository) *UserRegistrationService {
 	return &UserRegistrationService{
 		userRepository:          userRepository,
 		tenantRepository:        tenantRepository,
@@ -37,7 +37,7 @@ func (s *UserRegistrationService) RegisterTenant(tenantDTO *dto.TenantRegistrati
 		return err
 	}
 
-	tenant := &entities.Tenant{
+	tenant := &models.Tenant{
 		Name:      tenantDTO.Name,
 		Email:     tenantDTO.Email,
 		Phone:     tenantDTO.Phone,
@@ -50,7 +50,7 @@ func (s *UserRegistrationService) RegisterTenant(tenantDTO *dto.TenantRegistrati
 		return config.ErrFailedToCreateTenant
 	}
 
-	tenantLicence := &entities.TenantLicence{
+	tenantLicence := &models.TenantLicence{
 		TenantID:      tenant.ID,
 		LicenceKey:    uuid.New().String(),
 		LicencedSeats: 5,
@@ -68,7 +68,7 @@ func (s *UserRegistrationService) RegisterTenant(tenantDTO *dto.TenantRegistrati
 		return config.ErrFailedToHashPassword
 	}
 
-	user := &entities.User{
+	user := &models.User{
 		TenantID:                        tenant.ID,
 		FirstName:                       tenantDTO.User.FirstName,
 		LastName:                        tenantDTO.User.LastName,
@@ -129,7 +129,7 @@ func (s *UserRegistrationService) RegisterUser(tenantId uint, userDTO *dto.UserR
 		return config.ErrFailedToHashPassword
 	}
 
-	user := &entities.User{
+	user := &models.User{
 		TenantID:                        tenantId,
 		FirstName:                       userDTO.FirstName,
 		LastName:                        userDTO.LastName,

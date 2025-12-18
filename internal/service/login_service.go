@@ -1,21 +1,21 @@
-package services
+package service
 
 import (
 	"time"
 
-	"github.com/geekible-ltd/auth-server/src/internal/config"
-	"github.com/geekible-ltd/auth-server/src/internal/dto"
-	"github.com/geekible-ltd/auth-server/src/internal/repositories"
+	"github.com/geekible-ltd/auth-server/dto"
+	"github.com/geekible-ltd/auth-server/internal/config"
+	"github.com/geekible-ltd/auth-server/internal/repository"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
 type LoginService struct {
-	userRepository   *repositories.UserRepository
-	tenantRepository *repositories.TenantRepository
+	userRepository   *repository.UserRepository
+	tenantRepository *repository.TenantRepository
 }
 
-func NewLoginService(userRepository *repositories.UserRepository, tenantRepository *repositories.TenantRepository) *LoginService {
+func NewLoginService(userRepository *repository.UserRepository, tenantRepository *repository.TenantRepository) *LoginService {
 	return &LoginService{userRepository: userRepository, tenantRepository: tenantRepository}
 }
 

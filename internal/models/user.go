@@ -1,4 +1,4 @@
-package entities
+package models
 
 import "time"
 
@@ -25,3 +25,4 @@ type User struct {
 
 	Tenant Tenant `json:"tenant" gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
 }
+

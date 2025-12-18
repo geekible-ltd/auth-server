@@ -1,20 +1,20 @@
-package services
+package service
 
 import (
 	"time"
 
-	"github.com/geekible-ltd/auth-server/src/internal/config"
-	"github.com/geekible-ltd/auth-server/src/internal/dto"
-	"github.com/geekible-ltd/auth-server/src/internal/entities"
-	"github.com/geekible-ltd/auth-server/src/internal/repositories"
+	"github.com/geekible-ltd/auth-server/dto"
+	"github.com/geekible-ltd/auth-server/internal/config"
+	"github.com/geekible-ltd/auth-server/internal/models"
+	"github.com/geekible-ltd/auth-server/internal/repository"
 	"gorm.io/gorm"
 )
 
 type TenantLicenceService struct {
-	tenantLicenceRepository *repositories.TenantLicenceRepository
+	tenantLicenceRepository *repository.TenantLicenceRepository
 }
 
-func NewTenantLicenceService(tenantLicenceRepository *repositories.TenantLicenceRepository) *TenantLicenceService {
+func NewTenantLicenceService(tenantLicenceRepository *repository.TenantLicenceRepository) *TenantLicenceService {
 	return &TenantLicenceService{tenantLicenceRepository: tenantLicenceRepository}
 }
 
@@ -36,7 +36,7 @@ func (s *TenantLicenceService) GetTenantLicenceByID(tenantID uint) (*dto.TenantL
 	}, nil
 }
 
-func (s *TenantLicenceService) GetAllTenantLicences() ([]entities.TenantLicence, error) {
+func (s *TenantLicenceService) GetAllTenantLicences() ([]models.TenantLicence, error) {
 	return s.tenantLicenceRepository.GetAll()
 }
 
@@ -60,7 +60,12 @@ func (s *TenantLicenceService) GetTenantLicenceByTenantID(tenantID uint) (*dto.T
 		return nil, err
 	}
 	return &dto.TenantLicenceResponseDTO{
-		ID: tenantLicence.ID,
+		ID:            tenantLicence.ID,
+		TenantID:      tenantLicence.TenantID,
+		LicenceKey:    tenantLicence.LicenceKey,
+		LicencedSeats: tenantLicence.LicencedSeats,
+		UsedSeats:     tenantLicence.UsedSeats,
+		ExpiryDate:    tenantLicence.ExpiryDate,
 	}, nil
 }
 

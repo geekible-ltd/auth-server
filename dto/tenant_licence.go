@@ -16,3 +16,4 @@ type TenantLicenceUpdateRequestDTO struct {
 	LicencedSeats int        `json:"licenced_seats"`
 	ExpiryDate    *time.Time `json:"expiry_date"`
 }
+

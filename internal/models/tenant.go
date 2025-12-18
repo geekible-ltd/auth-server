@@ -1,4 +1,4 @@
-package entities
+package models
 
 import "time"
 
@@ -16,3 +16,4 @@ type Tenant struct {
 	Users         []User         `json:"users" gorm:"foreignKey:TenantID"`
 	TenantLicence *TenantLicence `json:"tenant_licence,omitempty" gorm:"foreignKey:TenantID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
 }
+

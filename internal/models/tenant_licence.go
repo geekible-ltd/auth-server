@@ -1,4 +1,4 @@
-package entities
+package models
 
 import "time"
 
@@ -15,3 +15,4 @@ type TenantLicence struct {
 
 	Tenant Tenant `json:"tenant" gorm:"foreignKey:TenantID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
 }
+

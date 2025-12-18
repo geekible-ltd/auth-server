@@ -17,6 +17,7 @@ A comprehensive, multi-tenant authentication and authorization package for Go ap
 - 🎭 **Role-based access control** - Pre-defined roles (Super Admin, Admin, Tenant Admin, Tenant User)
 - 🗄️ **GORM integration** - Works with any GORM-supported database (PostgreSQL, MySQL, SQLite, etc.)
 - 📦 **Clean architecture** - Repository pattern, service layer, and DTOs for maintainability
+- 🔒 **Encapsulated design** - Internal implementation hidden, only services exposed through AuthServer
 
 ## Table of Contents
 
@@ -61,10 +62,8 @@ import (
     "fmt"
     "log"
     
-    "github.com/geekible-ltd/auth-server/src/auth-service-registration"
-    "github.com/geekible-ltd/auth-server/src/internal/dto"
-    "github.com/geekible-ltd/auth-server/src/internal/repositories"
-    "github.com/geekible-ltd/auth-server/src/internal/services"
+    "github.com/geekible-ltd/auth-server"
+    "github.com/geekible-ltd/auth-server/dto"
     "gorm.io/driver/postgres"
     "gorm.io/gorm"
 )
@@ -77,19 +76,13 @@ func main() {
         log.Fatal("Failed to connect to database:", err)
     }
     
-    // 2. Initialize and migrate database
-    authServer := authserviceregistration.NewAuthServerRegistration(db)
-    if err := authServer.MigrateDBModels(); err != nil {
+    // 2. Initialize auth server (automatically creates all services)
+    authServer := authserver.NewAuthServer(db)
+    if err := authServer.MigrateDB(); err != nil {
         log.Fatal("Failed to migrate database:", err)
     }
     
-    // 3. Initialize services
-    userRepo := repositories.NewUserRepository(db)
-    tenantRepo := repositories.NewTenantRepository(db)
-    registrationService := services.NewUserRegistrationService(userRepo, tenantRepo)
-    loginService := services.NewLoginService(userRepo, tenantRepo)
-    
-    // 4. Register a new tenant with admin user
+    // 3. Register a new tenant with admin user
     tenantDTO := &dto.TenantRegistrationDTO{
         Name:    "Acme Corporation",
         Email:   "contact@acme.com",
@@ -101,17 +94,17 @@ func main() {
     tenantDTO.User.Email = "john.doe@acme.com"
     tenantDTO.User.Password = "SecurePassword123!"
     
-    if err := registrationService.RegisterTenant(tenantDTO); err != nil {
+    if err := authServer.RegistrationService.RegisterTenant(tenantDTO); err != nil {
         log.Fatal("Failed to register tenant:", err)
     }
     
-    // 5. Login
+    // 4. Login
     loginDTO := dto.LoginDTO{
         Email:    "john.doe@acme.com",
         Password: "SecurePassword123!",
     }
     
-    loginResponse, err := loginService.Login(loginDTO, "192.168.1.1")
+    loginResponse, err := authServer.LoginService.Login(loginDTO, "192.168.1.1")
     if err != nil {
         log.Fatal("Login failed:", err)
     }
@@ -153,8 +146,8 @@ db, err := gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
 ### Step 2: Run Database Migration
 
 ```go
-authServer := authserviceregistration.NewAuthServerRegistration(db)
-if err := authServer.MigrateDBModels(); err != nil {
+authServer := authserver.NewAuthServer(db)
+if err := authServer.MigrateDB(); err != nil {
     log.Fatal("Migration failed:", err)
 }
 ```
@@ -174,48 +167,21 @@ First, initialize the database and create repository and service instances:
 package main
 
 import (
+    "github.com/geekible-ltd/auth-server"
     "gorm.io/gorm"
-    "github.com/geekible-ltd/auth-server/src/auth-service-registration"
-    "github.com/geekible-ltd/auth-server/src/internal/repositories"
-    "github.com/geekible-ltd/auth-server/src/internal/services"
 )
 
-type AuthServerApp struct {
-    DB                      *gorm.DB
-    UserRepository          *repositories.UserRepository
-    TenantRepository        *repositories.TenantRepository
-    TenantLicenceRepository *repositories.TenantLicenceRepository
-    RegistrationService     *services.UserRegistrationService
-    LoginService            *services.LoginService
-    TenantService           *services.TenantService
-    UserService             *services.UserService
-    TenantLicenceService    *services.TenantLicenceService
-}
-
-func InitializeAuthServer(db *gorm.DB) (*AuthServerApp, error) {
-    // Migrate database
-    authServer := authserviceregistration.NewAuthServerRegistration(db)
-    if err := authServer.MigrateDBModels(); err != nil {
+func InitializeAuthServer(db *gorm.DB) (*authserver.AuthServer, error) {
+    // Initialize auth server with all services
+    authServer := authserver.NewAuthServer(db)
+    
+    // Run database migration
+    if err := authServer.MigrateDB(); err != nil {
         return nil, err
     }
     
-    // Initialize repositories
-    userRepo := repositories.NewUserRepository(db)
-    tenantRepo := repositories.NewTenantRepository(db)
-    tenantLicenceRepo := repositories.NewTenantLicenceRepository(db)
-    
-    // Initialize services
-    return &AuthServerApp{
-        DB:                      db,
-        UserRepository:          userRepo,
-        TenantRepository:        tenantRepo,
-        TenantLicenceRepository: tenantLicenceRepo,
-        RegistrationService:     services.NewUserRegistrationService(userRepo, tenantRepo),
-        LoginService:            services.NewLoginService(userRepo, tenantRepo),
-        TenantService:           services.NewTenantService(tenantRepo),
-        UserService:             services.NewUserService(userRepo),
-        TenantLicenceService:    services.NewTenantLicenceService(tenantLicenceRepo),
-    }, nil
+    // Return the auth server with all services ready to use
+    return authServer, nil
 }
 ```
 
@@ -791,7 +757,7 @@ type TenantLicenceUpdateRequestDTO struct {
 The package provides predefined error constants for common scenarios:
 
 ```go
-import "github.com/geekible-ltd/auth-server/src/internal/config"
+import "github.com/geekible-ltd/auth-server/config"
 
 // Available error constants
 var (
@@ -873,7 +839,7 @@ func HandleLicenceValidation(app *AuthServerApp, tenantID uint) {
 The package provides four pre-defined roles:
 
 ```go
-import "github.com/geekible-ltd/auth-server/src/internal/config"
+import "github.com/geekible-ltd/auth-server/config"
 
 const (
     UserRoleSuperAdmin  = "super_admin"   // System-wide administrator
@@ -886,7 +852,7 @@ const (
 ### Security Configuration
 
 ```go
-import "github.com/geekible-ltd/auth-server/src/internal/config"
+import "github.com/geekible-ltd/auth-server/config"
 
 const MaxFailedLoginAttempts = 3  // Account locked after 3 failed attempts
 ```
@@ -906,23 +872,11 @@ import (
     "net/http"
     
     "github.com/gin-gonic/gin"
-    "github.com/geekible-ltd/auth-server/src/auth-service-registration"
-    "github.com/geekible-ltd/auth-server/src/internal/config"
-    "github.com/geekible-ltd/auth-server/src/internal/dto"
-    "github.com/geekible-ltd/auth-server/src/internal/repositories"
-    "github.com/geekible-ltd/auth-server/src/internal/services"
+    "github.com/geekible-ltd/auth-server"
+    "github.com/geekible-ltd/auth-server/dto"
     "gorm.io/driver/postgres"
     "gorm.io/gorm"
 )
-
-type App struct {
-    DB                   *gorm.DB
-    RegistrationService  *services.UserRegistrationService
-    LoginService         *services.LoginService
-    TenantService        *services.TenantService
-    UserService          *services.UserService
-    TenantLicenceService *services.TenantLicenceService
-}
 
 func main() {
     // Database connection
@@ -932,73 +886,97 @@ func main() {
         log.Fatal("Failed to connect to database:", err)
     }
     
-    // Initialize auth server
-    authServer := authserviceregistration.NewAuthServerRegistration(db)
-    if err := authServer.MigrateDBModels(); err != nil {
+    // Initialize auth server with all services
+    authServer := authserver.NewAuthServer(db)
+    if err := authServer.MigrateDB(); err != nil {
         log.Fatal("Migration failed:", err)
-    }
-    
-    // Initialize repositories and services
-    userRepo := repositories.NewUserRepository(db)
-    tenantRepo := repositories.NewTenantRepository(db)
-    tenantLicenceRepo := repositories.NewTenantLicenceRepository(db)
-    
-    app := &App{
-        DB:                   db,
-        RegistrationService:  services.NewUserRegistrationService(userRepo, tenantRepo),
-        LoginService:         services.NewLoginService(userRepo, tenantRepo),
-        TenantService:        services.NewTenantService(tenantRepo),
-        UserService:          services.NewUserService(userRepo),
-        TenantLicenceService: services.NewTenantLicenceService(tenantLicenceRepo),
     }
     
     // Setup routes
     router := gin.Default()
     
     // Public routes
-    router.POST("/register/tenant", app.RegisterTenantHandler)
-    router.POST("/login", app.LoginHandler)
+    router.POST("/register/tenant", func(c *gin.Context) {
+        var tenantDTO dto.TenantRegistrationDTO
+        if err := c.ShouldBindJSON(&tenantDTO); err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+            return
+        }
+        if err := authServer.RegistrationService.RegisterTenant(&tenantDTO); err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(http.StatusCreated, gin.H{"message": "Tenant registered successfully"})
+    })
+    
+    router.POST("/login", func(c *gin.Context) {
+        var loginDTO dto.LoginDTO
+        if err := c.ShouldBindJSON(&loginDTO); err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+            return
+        }
+        ipAddress := c.ClientIP()
+        response, err := authServer.LoginService.Login(loginDTO, ipAddress)
+        if err != nil {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(http.StatusOK, response)
+    })
     
     // Protected routes (add your auth middleware here)
     protected := router.Group("/api")
     // protected.Use(YourAuthMiddleware())
     {
-        protected.POST("/users", app.RegisterUserHandler)
-        protected.GET("/tenants/:id", app.GetTenantHandler)
-        protected.GET("/tenants", app.ListTenantsHandler)
-        protected.PUT("/tenants/:id", app.UpdateTenantHandler)
-        protected.DELETE("/tenants/:id", app.DeleteTenantHandler)
-        protected.GET("/tenants/:tenantId/users/:userId", app.GetUserHandler)
-        protected.GET("/tenants/:tenantId/users", app.ListUsersHandler)
-        protected.PUT("/tenants/:tenantId/users/:userId", app.UpdateUserHandler)
-        protected.DELETE("/tenants/:tenantId/users/:userId", app.DeleteUserHandler)
-        protected.GET("/tenants/:tenantId/licence", app.GetTenantLicenceHandler)
-        protected.PUT("/tenants/:tenantId/licence", app.UpdateTenantLicenceHandler)
-        protected.GET("/licences", app.ListAllLicencesHandler)
+        // All services are accessible through authServer
+        protected.GET("/tenants/:id", func(c *gin.Context) {
+            // Use authServer.TenantService
+        })
+        protected.GET("/users", func(c *gin.Context) {
+            // Use authServer.UserService
+        })
+        // ... more routes using authServer services
     }
     
     log.Println("Server starting on :8080")
     router.Run(":8080")
 }
 
-// Handler: Register Tenant
-func (app *App) RegisterTenantHandler(c *gin.Context) {
-    var tenantDTO dto.TenantRegistrationDTO
-    if err := c.ShouldBindJSON(&tenantDTO); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-        return
-    }
-    
-    if err := app.RegistrationService.RegisterTenant(&tenantDTO); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
-    
-    c.JSON(http.StatusCreated, gin.H{"message": "Tenant registered successfully"})
-}
+## Public API
 
-// Handler: Login
-func (app *App) LoginHandler(c *gin.Context) {
+The package exposes only two public packages:
+
+1. **`authserver`** - Main package with `AuthServer` struct containing all services
+2. **`dto`** - Data Transfer Objects for API requests and responses
+
+All internal implementation (models, repositories, services, config) is hidden in the `internal/` directory and cannot be imported by external packages.
+
+### Available Services
+
+Through `AuthServer`, you get access to:
+- `LoginService` - User authentication
+- `RegistrationService` - Tenant and user registration
+- `TenantService` - Tenant CRUD operations  
+- `UserService` - User CRUD operations
+- `TenantLicenceService` - Licence management
+
+### Example Usage Pattern
+
+```go
+// Initialize once
+authServer := authserver.NewAuthServer(db)
+
+// Use services throughout your application
+authServer.LoginService.Login(...)
+authServer.RegistrationService.RegisterTenant(...)
+authServer.TenantService.GetTenantByID(...)
+authServer.UserService.GetAllUsers(...)
+authServer.TenantLicenceService.GetTenantLicenceByTenantID(...)
+```
+
+// Removed old handler examples - use services directly as shown above
+
+## Security Best Practices
     var loginDTO dto.LoginDTO
     if err := c.ShouldBindJSON(&loginDTO); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

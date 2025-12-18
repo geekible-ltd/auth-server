@@ -1,19 +1,19 @@
-package services
+package service
 
 import (
 	"time"
 
-	"github.com/geekible-ltd/auth-server/src/internal/config"
-	"github.com/geekible-ltd/auth-server/src/internal/dto"
-	"github.com/geekible-ltd/auth-server/src/internal/repositories"
+	"github.com/geekible-ltd/auth-server/dto"
+	"github.com/geekible-ltd/auth-server/internal/config"
+	"github.com/geekible-ltd/auth-server/internal/repository"
 	"gorm.io/gorm"
 )
 
 type UserService struct {
-	userRepository *repositories.UserRepository
+	userRepository *repository.UserRepository
 }
 
-func NewUserService(userRepository *repositories.UserRepository) *UserService {
+func NewUserService(userRepository *repository.UserRepository) *UserService {
 	return &UserService{userRepository: userRepository}
 }
 
